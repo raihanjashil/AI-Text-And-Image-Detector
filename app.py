@@ -252,23 +252,26 @@ with tab_text:
                     st.markdown(
                         "<p style='color:#6b7280; font-size:0.85rem; margin-bottom:0.8rem;'>"
                         "Top TF-IDF weighted terms found in your text. "
-                        "Higher score = more distinctive for the model."
+                        "<span style='color:#22c55e;'>Green</span> = word leans Human-written. "
+                        "<span style='color:#ef4444;'>Red</span> = word leans AI-generated."
                         "</p>",
                         unsafe_allow_html=True,
                     )
-                    max_score = max(s for _, s in top_features) or 1.0
-                    for word, score in top_features:
+                    max_score = max(s for _, s, _ in top_features) or 1.0
+                    for word, score, tendency in top_features:
                         bar_pct = int((score / max_score) * 100)
+                        bar_color = "#22c55e" if tendency == "Human" else "#ef4444"
+                        label_color = "#22c55e" if tendency == "Human" else "#ef4444"
                         st.markdown(
                             f"""
                             <div style="display:flex; align-items:center;
                                         gap:10px; margin-bottom:6px;">
                                 <div style="font-family:'Space Mono',monospace;
-                                            font-size:0.82rem; color:#e8eaf0;
+                                            font-size:0.82rem; color:{label_color};
                                             width:140px; flex-shrink:0;">{word}</div>
                                 <div style="flex:1; background:#1e2330;
                                             border-radius:4px; height:8px;">
-                                    <div style="width:{bar_pct}%; background:{color};
+                                    <div style="width:{bar_pct}%; background:{bar_color};
                                                 height:8px; border-radius:4px;
                                                 opacity:0.75;"></div>
                                 </div>
@@ -280,6 +283,20 @@ with tab_text:
                             """,
                             unsafe_allow_html=True,
                         )
+
+            with st.expander("📊 About this model"):
+                st.markdown(
+                    """
+                    <div style='color:#6b7280; font-size:0.85rem; line-height:1.7;'>
+                    <b style='color:#e8eaf0;'>Model:</b> Multinomial Naive Bayes + TF-IDF (10k features, 1–3 n-grams)<br>
+                    <b style='color:#e8eaf0;'>Dataset:</b> AI_Human — 487,235 samples (62.8% human, 37.2% AI)<br>
+                    <b style='color:#e8eaf0;'>Test accuracy:</b> <span style='color:#22c55e;'>96%</span> on 97,447 held-out samples<br>
+                    <b style='color:#e8eaf0;'>Precision / Recall / F1:</b> 0.96 / 0.96 / 0.96 (weighted avg)<br>
+                    <b style='color:#e8eaf0;'>Limitation:</b> May be less reliable on heavily edited or very short AI text.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -329,6 +346,40 @@ with tab_image:
             col_real, col_ai = st.columns(2)
             render_prob_card(col_real, "REAL", real_prob, "#22c55e", "#071a0e", "#14532d")
             render_prob_card(col_ai,   "AI",   ai_prob,   "#ef4444", "#1a0707", "#7f1d1d")
+
+            # Grad-CAM heatmap
+            from image_detector import get_gradcam
+            pred_class = 1 if label == "Real" else 0
+            with st.spinner("Generating explanation heatmap…"):
+                cam_image = get_gradcam(image, pred_class)
+
+            if cam_image is not None:
+                with st.expander("🔥 Why did the model predict this? (Grad-CAM)"):
+                    st.markdown(
+                        "<p style='color:#6b7280; font-size:0.85rem; margin-bottom:0.8rem;'>"
+                        "Grad-CAM highlights the image regions that most influenced the prediction. "
+                        "<span style='color:#ef4444;'>Red/warm areas</span> = high influence. "
+                        "<span style='color:#6b7280;'>Blue/cool areas</span> = low influence."
+                        "</p>",
+                        unsafe_allow_html=True,
+                    )
+                    col_orig, col_cam = st.columns(2)
+                    col_orig.image(image, caption="Original", use_container_width=True)
+                    col_cam.image(cam_image, caption="Grad-CAM Heatmap", use_container_width=True)
+
+            with st.expander("📊 About this model"):
+                st.markdown(
+                    """
+                    <div style='color:#6b7280; font-size:0.85rem; line-height:1.7;'>
+                    <b style='color:#e8eaf0;'>Model:</b> ResNet18 fine-tuned on CIFAKE (ImageNet pretrained)<br>
+                    <b style='color:#e8eaf0;'>Dataset:</b> CIFAKE — real CIFAR-10 photos vs Stable Diffusion generated images<br>
+                    <b style='color:#e8eaf0;'>Test accuracy:</b> <span style='color:#22c55e;'>98%</span> on held-out CIFAKE test set<br>
+                    <b style='color:#e8eaf0;'>Architecture:</b> ResNet18, FC layer replaced (512 → 2 classes)<br>
+                    <b style='color:#e8eaf0;'>Limitation:</b> Trained on 32×32 CIFAR-style images — may be less reliable on high-resolution photos.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
     else:
         st.markdown(

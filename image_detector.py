@@ -108,6 +108,60 @@ def predict(image: Image.Image) -> dict:
     }
 
 
+# ── Grad-CAM explainability ───────────────────────────────────────────────────
+
+def get_gradcam(image: Image.Image, pred_class: int) -> Image.Image:
+    """
+    Generate a Grad-CAM heatmap overlay on the original image.
+
+    Parameters
+    ----------
+    image      : PIL.Image.Image  — original RGB image (any size)
+    pred_class : int              — 0 = FAKE (AI), 1 = REAL
+
+    Returns
+    -------
+    PIL.Image.Image — original image blended with the CAM heatmap (RGB, 224×224)
+    """
+    try:
+        from pytorch_grad_cam import GradCAM
+        from pytorch_grad_cam.utils.image import show_cam_on_image
+        from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+    except ImportError:
+        return None
+
+    import numpy as np
+
+    model = _load_model()
+
+    # layer2 gives the best spatial resolution (4×4) for 28×28 inputs
+    target_layers = [model.layer2[-1]]
+
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
+    tensor = _TRANSFORM(image).unsqueeze(0).to(DEVICE)
+
+    targets = [ClassifierOutputTarget(pred_class)]
+    cam = GradCAM(model=model, target_layers=target_layers)
+    grayscale_cam = cam(input_tensor=tensor, targets=targets)[0]  # (H, W)
+
+    # Build display image at 224×224 for a clear overlay
+    DISPLAY = 224
+    img_display = np.array(image.resize((DISPLAY, DISPLAY))) / 255.0
+
+    # Upscale CAM to display size
+    from PIL import Image as _PIL
+    cam_up = np.array(
+        _PIL.fromarray((grayscale_cam * 255).astype("uint8")).resize(
+            (DISPLAY, DISPLAY), resample=_PIL.BILINEAR
+        )
+    ) / 255.0
+
+    overlay = show_cam_on_image(img_display.astype("float32"), cam_up, use_rgb=True)
+    return Image.fromarray(overlay)
+
+
 # ── Quick CLI test ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

@@ -135,10 +135,15 @@ def predict(text: str) -> dict:
 
 def _get_top_features(tfidf_matrix, n: int = 10) -> list:
     """
-    Return the top-n words from this document by TF-IDF weight.
-    These are the words that most influenced the prediction.
+    Return the top-n words from this document by TF-IDF weight,
+    annotated with which class each word leans towards.
 
-    Returns list of (word, score) tuples sorted descending.
+    Uses Naive Bayes feature_log_prob_ to compare
+    log P(word | AI) vs log P(word | Human).
+
+    Returns list of (word, score, tendency) tuples sorted descending.
+        tendency: "AI" if the word is more associated with AI writing,
+                  "Human" otherwise.
     """
     _load_models()
 
@@ -149,7 +154,16 @@ def _get_top_features(tfidf_matrix, n: int = 10) -> list:
     top_indices = np.argsort(scores)[::-1][:n]
     top_indices = [i for i in top_indices if scores[i] > 0]
 
-    return [(feature_names[i], float(scores[i])) for i in top_indices]
+    # NB log probs: shape (n_classes, n_features)
+    # label_encoder: AI=0, Human=1
+    log_probs = _model.feature_log_prob_  # (2, vocab_size)
+
+    result = []
+    for i in top_indices:
+        tendency = "AI" if log_probs[0][i] > log_probs[1][i] else "Human"
+        result.append((feature_names[i], float(scores[i]), tendency))
+
+    return result
 
 
 # ── Quick CLI test ────────────────────────────────────────────────────────────
@@ -168,4 +182,4 @@ if __name__ == "__main__":
         print(f"AI prob : {result['ai_prob']:.1%}")
         print(f"Human % : {result['human_prob']:.1%}")
         print(f"Confid. : {result['confidence']:.1%}")
-        print(f"Top words: {[w for w, _ in result['top_features'][:5]]}")
+        print(f"Top words: {[(w, t) for w, _, t in result['top_features'][:5]]}")
